@@ -1,3 +1,3 @@
 # Training
 
-Repository containing various practice/trainig/tutorial stuff.
+Repository containing various practice/trainnig/tutorial stuff.
