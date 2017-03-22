@@ -86,6 +86,23 @@ public class KarateChop
     {
         int result = -1;
 
+        if(searchArray.length != 0)
+        {
+            result = chop2Recursive(searchNum, 0, searchArray.length + 1,searchArray);
+        }
+
+        return result;
+    }
+
+    private int chop2Recursive(final int searchNum, final int startIndex, final int endIndex, final int[] searchArray)
+    {
+        int result = -1;
+
+        if(startIndex == 0 && (endIndex-1) == searchArray.length)
+        {
+
+        }
+
         return result;
     }
 
