@@ -1,6 +1,9 @@
 package com.viavi.vsamonitor.tests;
 
-import java.util.List;
+import java.util.*;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -211,6 +214,206 @@ public class KarateChop
         return result;
     }
 
+    /**
+     * Pros: Should be faster with bigger data
+     * Cons: Prone for multithreading issues. Slightly overcomplicated.
+     *
+     * I like improved division step calculation.
+     *
+     * @param searchNum
+     * @param searchArray
+     * @return the integer index of the target in the array, or -1 if the target is not in the array.
+     */
+    public int chop4(final int searchNum, final int[] searchArray)
+    {
+        int result = -1;
+        int arrayLength = searchArray.length;
+
+        if(arrayLength == 1)
+        {
+            if(searchArray[0] == searchNum)
+            {
+                result = 0;
+            }
+        }
+        else if(arrayLength > 0)
+        {
+            // Split array into as much half sizes as possible. Create threads for each half size and let them rip.
+            //As soon as the positive result is returned or all threads have finished we return result.
+
+            List<Integer> steps = chop4CollectSteps(arrayLength);
+            List<Integer> results = new ArrayList<>();
+            int numberOfSteps = steps.size();
+
+            CountDownLatch threadExecutionLatch = new CountDownLatch(numberOfSteps);
+            int startIndex = 0;
+            int endIndex = steps.get(0);
+
+           for(int i = 0; i < numberOfSteps; i++)
+           {
+                final Chop4CheckSide chop4CheckSide = new Chop4CheckSide(threadExecutionLatch);
+
+                if(i > 0)
+                {
+                    int previousStep = steps.get(i-1);
+                    startIndex = previousStep;
+                    endIndex = previousStep + steps.get(i);
+                }
+
+                chop4CheckSide.setSearchParams(searchNum, searchArray, startIndex, endIndex);
+                chop4CheckSide.setResultGatherer(results);
+                Thread thread = new Thread(chop4CheckSide);
+                thread.start();
+           }
+
+            try
+            {
+                threadExecutionLatch.await(10, TimeUnit.SECONDS);
+
+                if(results.size() > 0)
+                {
+                    result = results.get(0);
+                }
+
+            } catch (InterruptedException e)
+            {
+                e.printStackTrace();
+            }
+
+        }
+
+        return result;
+    }
+
+    private synchronized void addResult(final int result, final List<Integer> results)
+    {
+        results.add(result);
+    }
+
+    class Chop4CheckSide implements Runnable
+    {
+        private final CountDownLatch executionLatch;
+        private int searchNum;
+        private int[] searchArray;
+        private int startIndex;
+        private int endIndex;
+        private List<Integer> resultGatherer;
+
+        Chop4CheckSide(final CountDownLatch latch)
+        {
+            this.executionLatch = latch;
+        }
+
+        public void setSearchParams(final int searchNum, final int[] searchArray, final int startIndex, final int endIndex)
+        {
+            this.searchNum = searchNum;
+            this.searchArray = searchArray;
+            this.startIndex = startIndex;
+            this.endIndex = endIndex;
+        }
+
+        public void setResultGatherer(final List<Integer> results)
+        {
+            this.resultGatherer = results;
+        }
+
+        @Override
+        public void run()
+        {
+            for(int i = startIndex; i <= endIndex; i++)
+            {
+                if(i < searchArray.length && searchArray[i] == searchNum)
+                {
+                    addResult(i, resultGatherer);
+                }
+            }
+
+           executionLatch.countDown();
+        }
+    }
+
+    private List<Integer> chop4CollectSteps(final int arrayLength)
+    {
+        List<Integer> steps = new ArrayList<>();
+
+        int stepDivider = 2;
+        int numberOfItemsCovered = 0;
+        boolean notAllStepsCollected = true;
+
+        while(notAllStepsCollected)
+        {
+            int step = arrayLength / stepDivider;
+
+            if(step > 0)
+            {
+                steps.add(step);
+                stepDivider = stepDivider * 2;
+                numberOfItemsCovered += step;
+            }
+            else if(numberOfItemsCovered < arrayLength)
+            {
+                steps.add(arrayLength - numberOfItemsCovered);
+                notAllStepsCollected = false;
+            }
+            else
+            {
+                notAllStepsCollected = false;
+            }
+        }
+
+        return steps;
+    }
+
+    /**
+     * Pros:
+     * Cons:
+     *
+     * @param searchNum
+     * @param searchArray
+     * @return the integer index of the target in the array, or -1 if the target is not in the array.
+     */
+    public int chop5(final int searchNum, final int[] searchArray)
+    {
+        int result = -1;
+        int arrayLength = searchArray.length;
+
+        if(arrayLength == 1)
+        {
+            if(searchArray[0] == searchNum)
+            {
+                result = 0;
+            }
+        }
+        else if(arrayLength > 0)
+        {
+            //TODO How is this different from first chop?
+            //Calculate halve
+            //Apply Function<SearchParams,Integer>
+            //If found - end
+            //else calculate next halve
+        }
+
+        return result;
+    }
+
+    /**
+     * Maybe idea for another implementation
+     */
+    class ChopProducer implements Supplier<Integer>
+    {
+
+        @Override
+        public Integer get()
+        {
+            int result = -1;
+
+
+
+            return result;
+        }
+    }
+
+
     public static void main(String[] args)
     {
         KarateChop obj = new KarateChop();
@@ -292,5 +495,112 @@ public class KarateChop
         final long endTimeChop3 = System.currentTimeMillis() - startTimeChop3;
 
         System.out.println("Chop3 tests were completed in: " + endTimeChop3 + " ms");
+
+        final long startTimeChop4 = System.currentTimeMillis();
+        assertEquals(-1, obj.chop4(3, new int[]{}));
+        assertEquals(-1, obj.chop4(3, new int[]{1}));
+        assertEquals(0,  obj.chop4(1, new int[]{1}));
+
+        assertEquals(0,  obj.chop4(1, new int[]{1, 3, 5}));
+        assertEquals(1,  obj.chop4(3, new int[]{1, 3, 5}));
+        assertEquals(2,  obj.chop4(5, new int[]{1, 3, 5}));
+        assertEquals(-1, obj.chop4(0, new int[]{1, 3, 5}));
+        assertEquals(-1, obj.chop4(2, new int[]{1, 3, 5}));
+        assertEquals(-1, obj.chop4(4, new int[]{1, 3, 5}));
+        assertEquals(-1, obj.chop4(6, new int[]{1, 3, 5}));
+
+        assertEquals(0,  obj.chop4(1, new int[]{1, 3, 5, 7}));
+        assertEquals(1,  obj.chop4(3, new int[]{1, 3, 5, 7}));
+        assertEquals(2,  obj.chop4(5, new int[]{1, 3, 5, 7}));
+        assertEquals(3,  obj.chop4(7, new int[]{1, 3, 5, 7}));
+        assertEquals(-1, obj.chop4(0, new int[]{1, 3, 5, 7}));
+        assertEquals(-1, obj.chop4(2, new int[]{1, 3, 5, 7}));
+        assertEquals(-1, obj.chop4(4, new int[]{1, 3, 5, 7}));
+        assertEquals(-1, obj.chop4(6, new int[]{1, 3, 5, 7}));
+        assertEquals(-1, obj.chop4(8, new int[]{1, 3, 5, 7}));
+        final long endTimeChop4 = System.currentTimeMillis() - startTimeChop4;
+
+        System.out.println("Chop4 tests were completed in: " + endTimeChop4 + " ms");
+
+        final long startTimeChop5 = System.currentTimeMillis();
+        assertEquals(-1, obj.chop5(3, new int[]{}));
+        assertEquals(-1, obj.chop5(3, new int[]{1}));
+        assertEquals(0,  obj.chop5(1, new int[]{1}));
+
+        assertEquals(0,  obj.chop5(1, new int[]{1, 3, 5}));
+        assertEquals(1,  obj.chop5(3, new int[]{1, 3, 5}));
+        assertEquals(2,  obj.chop5(5, new int[]{1, 3, 5}));
+        assertEquals(-1, obj.chop5(0, new int[]{1, 3, 5}));
+        assertEquals(-1, obj.chop5(2, new int[]{1, 3, 5}));
+        assertEquals(-1, obj.chop5(4, new int[]{1, 3, 5}));
+        assertEquals(-1, obj.chop5(6, new int[]{1, 3, 5}));
+
+        assertEquals(0,  obj.chop5(1, new int[]{1, 3, 5, 7}));
+        assertEquals(1,  obj.chop5(3, new int[]{1, 3, 5, 7}));
+        assertEquals(2,  obj.chop5(5, new int[]{1, 3, 5, 7}));
+        assertEquals(3,  obj.chop5(7, new int[]{1, 3, 5, 7}));
+        assertEquals(-1, obj.chop5(0, new int[]{1, 3, 5, 7}));
+        assertEquals(-1, obj.chop5(2, new int[]{1, 3, 5, 7}));
+        assertEquals(-1, obj.chop5(4, new int[]{1, 3, 5, 7}));
+        assertEquals(-1, obj.chop5(6, new int[]{1, 3, 5, 7}));
+        assertEquals(-1, obj.chop5(8, new int[]{1, 3, 5, 7}));
+        final long endTimeChop5 = System.currentTimeMillis() - startTimeChop5;
+
+        System.out.println("Chop5 tests were completed in: " + endTimeChop5 + " ms");
+
+        testWithLargeAmount(obj);
+    }
+
+    private static void testWithLargeAmount(final KarateChop obj)
+    {
+        int[] largeArray = formArray(90000);
+
+        int expectedIndex = 55437;
+        int searchNum = largeArray[expectedIndex];
+
+        final long startTimeChop1 = System.currentTimeMillis();
+        assertEquals(expectedIndex,  obj.chop1(searchNum, largeArray));
+        final long endTimeChop1 = System.currentTimeMillis() - startTimeChop1;
+
+        System.out.println("Large Chop1 tests were completed in: " + endTimeChop1 + " ms");
+
+        final long startTimeChop2 = System.currentTimeMillis();
+        assertEquals(expectedIndex,  obj.chop2(searchNum, largeArray));
+        final long endTimeChop2 = System.currentTimeMillis() - startTimeChop2;
+
+        System.out.println("Large Chop2 tests were completed in: " + endTimeChop2 + " ms");
+
+        final long startTimeChop3 = System.currentTimeMillis();
+        assertEquals(expectedIndex,  obj.chop3(searchNum, largeArray));
+        final long endTimeChop3 = System.currentTimeMillis() - startTimeChop3;
+
+        System.out.println("Large Chop3 tests were completed in: " + endTimeChop3 + " ms");
+
+        final long startTimeChop4 = System.currentTimeMillis();
+        assertEquals(expectedIndex,  obj.chop4(searchNum, largeArray));
+        final long endTimeChop4 = System.currentTimeMillis() - startTimeChop4;
+
+        System.out.println("Large Chop4 tests were completed in: " + endTimeChop4 + " ms");
+    }
+
+    private static int[] formArray(int ammount)
+    {
+        Random rnd = new Random();
+
+        Set<Integer> integerSet = new HashSet<>();
+
+        for(int i = 0; i < ammount; i++)
+        {
+            boolean elementAdded = false;
+            while (!elementAdded)
+            {
+                final int rndInt = rnd.nextInt(ammount);
+                elementAdded = integerSet.add(rndInt);
+            }
+        }
+
+        final int[] results = integerSet.stream().mapToInt(Number::intValue).toArray();
+
+        return results;
     }
 }
